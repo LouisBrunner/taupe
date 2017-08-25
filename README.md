@@ -1,2 +1,2 @@
 # taupe
-Simple gopher client (in python)
+Simple gopher client (in Go)
