@@ -6,13 +6,21 @@ package lib
 import (
   "sync"
   "fmt"
+
+  "net"
   "net/url"
+
+  "io"
+  "bufio"
+  "strings"
 )
 
 const (
   NetworkResultOK = iota
   NetworkResultError
 )
+
+const CR_LF, EOM string = "\r\n", "."
 
 type NetworkResult struct {
   Result int
@@ -90,16 +98,83 @@ func (self *Network) _MakeRequest(request string) {
     return
   }
   if url.Scheme != "gopher" && url.Scheme != "" {
-    self._SendError(fmt.Sprintf("invalid scheme `%s` %d", url.Scheme, len(url.Scheme)))
+    self._SendError(fmt.Sprintf("invalid scheme `%s`", url.Scheme))
     return
   }
 
-  // TODO: do network request
+  if url.Host == "" {
+    self._SendError(fmt.Sprintf("missing host for `%s`", request))
+    return
+  }
+
+  port := "70"
+  if url.Port() != "" {
+    port = url.Port()
+  }
+
+  host := fmt.Sprintf("%s:%s", url.Host, port)
+  conn, err := net.Dial("tcp", host)
+  if err != nil {
+    self._SendError(fmt.Sprintf("cannot connect to `%s`: %s", host, err))
+    return
+  }
   if self._ShouldStop() {
     return
   }
 
-  self._SendResult(request, []string{"abc", "cde", "fde"})
+  fmt.Fprintf(conn, CR_LF)
+
+  lines := []string{}
+  reader := bufio.NewReader(conn)
+
+  for {
+    if self._ShouldStop() {
+      return
+    }
+
+    char, err := reader.Peek(1)
+    if err != nil && err != io.EOF {
+      self._SendError(fmt.Sprintf("while reading EOM: %s", err))
+      return
+    }
+    if string(char) == EOM || err == io.EOF {
+      break
+    }
+
+    line := ""
+    for {
+      if self._ShouldStop() {
+        return
+      }
+
+      result, err := reader.ReadString(CR_LF[0])
+      if err != nil {
+        self._SendError(fmt.Sprintf("while reading line: %s", err))
+        return
+      }
+      line += result
+
+      char, err := reader.Peek(1)
+      if err != nil {
+        self._SendError(fmt.Sprintf("while peeking LF: %s", err))
+        return
+      }
+      if char[0] == CR_LF[1] {
+        char, err := reader.ReadByte()
+        if err != nil {
+          self._SendError(fmt.Sprintf("while reading LF: %s", err))
+          return
+        }
+        line += string(char)
+        break
+      }
+    }
+    lines = append(lines, strings.Replace(line, CR_LF, "", -1))
+  }
+
+  conn.Close()
+
+  self._SendResult(request, lines)
 }
 
 func (self *Network) _ShouldStop() (stop bool) {
@@ -120,10 +195,16 @@ func (self *Network) _ShouldStop() (stop bool) {
 }
 
 func (self *Network) _SendResult(address string, list []string) {
+  if self._ShouldStop() {
+    return
+  }
   self._SendMessage(&NetworkResult{Result: NetworkResultOK, Address: address, List: list})
 }
 
 func (self *Network) _SendError(message string) {
+  if self._ShouldStop() {
+    return
+  }
   self._SendMessage(&NetworkResult{Result: NetworkResultError, Error: message})
 }
 
