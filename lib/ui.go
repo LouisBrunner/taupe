@@ -104,7 +104,6 @@ func (self *UI) _Loop() {
         self._HandleResult(result)
       }
 
-    // TODO: navigation
 		case *tcell.EventKey:
 			switch event.Key() {
       case tcell.KeyRune:
@@ -122,6 +121,10 @@ func (self *UI) _Loop() {
         case 'f', 'F':
           if !self.Loading {
             self._GoForward()
+          }
+        case 'i', 'I':
+          if !self.Loading {
+            self._Input()
           }
         }
 			case tcell.KeyEscape, tcell.KeyCtrlC:
@@ -189,7 +192,7 @@ func (self *UI) _Render() {
     status = "Loading..."
   }
 
-  footer := "[Q]uit/Esc/Ctrl+C [R]efresh Up Down Enter [B]ack/Backspace [F]orward"
+  footer := "[Q]uit/Esc/Ctrl+C [R]efresh Up Down Enter [B]ack/Backspace [F]orward [I]nput"
   if len(status) > 0 {
     footer = footer + " | " + status
   }
@@ -204,6 +207,10 @@ func (self *UI) _RenderLine(x, y int, line string, style tcell.Style) {
   for i := x; i < len(line) && i < w && y < h; i++ {
     self.Screen.SetContent(i, y, rune(line[i]), nil, style)
   }
+}
+
+func (self *UI) _Input() {
+  // TODO: manual input
 }
 
 func (self *UI) _GoBack() {

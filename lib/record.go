@@ -32,19 +32,26 @@ type Record struct {
   Type byte
   Display string
   Address string
+  Label string
+  String string
 }
 
 func (self *Record) Parse(source string) bool {
   fields := strings.Split(source, TAB)
-  if len(fields) < 4 {
-    return false
-  }
   if len(fields[0]) < 1 {
     return false
   }
   self.Type = fields[0][0]
   self.Display = fields[0][1:]
-  self.Address = fmt.Sprintf("gopher://%s:%s/?q=%s&t=%c", fields[2], fields[3], fields[1], self.Type)
+  self.Label = self._GetLabel()
+  if self.Label != "" {
+    self.String = fmt.Sprintf("[%s] %s", self.Label, self.Display)
+  } else {
+    self.String = self.Display
+  }
+  if len(fields) >= 4 {
+    self.Address = fmt.Sprintf("gopher://%s:%s/?q=%s&t=%c", fields[2], fields[3], fields[1], self.Type)
+  }
   return true
 }
 
@@ -55,5 +62,33 @@ func (self *Record) IsLink() bool {
 func (self *Record) ToString() string {
   // return fmt.Sprintf("%c %s", self.Type, self.Display)
   // return fmt.Sprintf("%s %s", self.Display, self.Address)
-  return self.Display
+  return self.String
+}
+
+func (self *Record) _GetLabel() string {
+  switch self.Type {
+  case TypeSubMenu:
+    return "menu"
+  case TypeHTML:
+    return "html"
+  case TypeImage, TypeGIF:
+    return "image"
+  case TypeBinHex, TypeDOS, TypeUUEncoded, TypeBinary:
+    return "binary"
+  case TypeTelnet, TypeTelnet3270:
+    return "telnet"
+  case TypeError:
+    return "error"
+  case TypeSearch:
+    return "search"
+  case TypeRedundant:
+    return "mirror"
+  case TypeCCSO:
+    return "ccso"
+  case TypeFile:
+    return "file"
+  case TypeSound:
+    return "sound"
+  }
+  return ""
 }
