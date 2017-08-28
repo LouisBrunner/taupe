@@ -35,6 +35,10 @@ type UI struct {
   Status UIStatus
 
   Screen tcell.Screen
+
+  WasPrevious bool
+  HistoryBefore []string
+  HistoryAfter []string
 }
 
 func MakeUI(network *Network) *UI {
@@ -109,6 +113,14 @@ func (self *UI) _Loop() {
           if !self.Loading {
   		      self._Refresh()
           }
+        case 'b', 'B':
+          if !self.Loading {
+            self._GoBack()
+          }
+        case 'f', 'F':
+          if !self.Loading {
+            self._GoForward()
+          }
         }
 			case tcell.KeyEscape, tcell.KeyCtrlC:
 			  return
@@ -125,6 +137,10 @@ func (self *UI) _Loop() {
         if !self.Loading {
           self._SelectLink(1)
           self._Render()
+        }
+      case tcell.KeyBackspace:
+        if !self.Loading {
+          self._GoBack()
         }
 			}
 
@@ -164,7 +180,7 @@ func (self *UI) _Render() {
     status = "Loading..."
   }
 
-  footer := "[Q]uit/Esc/Ctrl+C [R]efresh Up Down Enter"
+  footer := "[Q]uit/Esc/Ctrl+C [R]efresh Up Down Enter [B]ack/Backspace [F]orward"
   if len(status) > 0 {
     footer = footer + " | " + status
   }
@@ -179,6 +195,29 @@ func (self *UI) _RenderLine(x, y int, line string, style tcell.Style) {
   for i := x; i < len(line) && i < w && y < h; i++ {
     self.Screen.SetContent(i, y, rune(line[i]), nil, style)
   }
+}
+
+func (self *UI) _GoBack() {
+  if len(self.HistoryBefore) < 1 {
+    self._SetStatus("Error: no previous page")
+    return
+  }
+  self.Loading = true
+  previous := self.HistoryBefore[0]
+  self.HistoryBefore = self.HistoryBefore[1:]
+  self.WasPrevious = true
+  self.Network.Request(previous)
+}
+
+func (self *UI) _GoForward() {
+  if len(self.HistoryAfter) < 1 {
+    self._SetStatus("Error: no next page")
+    return
+  }
+  self.Loading = true
+  next := self.HistoryAfter[0]
+  self.HistoryAfter = self.HistoryAfter[1:]
+  self.Network.Request(next)
 }
 
 func (self *UI) _RequestLine() {
@@ -208,25 +247,33 @@ func (self *UI) OnNetworkResult(result *NetworkResult) {
   self.Screen.PostEvent(tcell.NewEventInterrupt(result))
 }
 
+func (self *UI) _HandleCommon(result *NetworkResult) {
+  self.Content = result.Result
+  if self.WasPrevious {
+    self.HistoryAfter = append([]string{self.Address}, self.HistoryAfter...)
+  } else {
+    self.HistoryBefore = append([]string{self.Address}, self.HistoryBefore...)
+  }
+  self.Address = result.Address
+  self.Line = -1
+}
+
 func (self *UI) _HandleResult(result *NetworkResult) {
   self.Loading = false
   switch result.Result {
   case NetworkResultOK:
-    self.Content = result.Result
-    self.Address = result.Address
+    self._HandleCommon(result)
     self.Lines = self._ParseLines(result.List)
-    self.Line = -1
     self._SelectLink(1)
     self._Render()
   case NetworkResultHTML:
-    self.Content = result.Result
-    self.Address = result.Address
+    self._HandleCommon(result)
     self.HTML = self._ParseHTML(result.HTML)
-    self.Line = -1
     self._Render()
   case NetworkResultError:
     self._SetStatus(fmt.Sprintf("Network error: %s", result.Error))
   }
+  self.WasPrevious = false
 }
 
 func (self *UI) _ParseHTML(html string) []string {
