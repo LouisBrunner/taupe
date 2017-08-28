@@ -138,6 +138,7 @@ func (self *Network) _MakeRequest(request string) {
     linkType = val[0][0]
   }
 
+  // TODO: support images, binaries...
   if linkType == TypeHTML {
     self._ParseHTML(request, reader)
   } else {

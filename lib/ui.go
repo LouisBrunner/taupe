@@ -161,15 +161,21 @@ func (self *UI) _Render() {
   self.Screen.Clear()
 
   w, h := self.Screen.Size()
+  middle := h / 2
 
   st := tcell.StyleDefault
 
   header := fmt.Sprintf("Taupe: %s", self.Address)
   self._RenderLine(0, 0, ljust(header, w), st.Reverse(true))
 
-  // TODO: scroll
+  length := self._GetLength()
+  offset := 0
+  if self.Line > middle {
+    offset = imin(self.Line - middle, length - h + 2)
+  }
   if self.Content == NetworkResultOK {
-    for i, line := range self.Lines {
+    for i := offset; i - offset < h - 2 && i < length; i += 1 {
+      line := self.Lines[i]
       style := st
       if line.IsLink() {
         style = style.Underline(true)
@@ -177,11 +183,16 @@ func (self *UI) _Render() {
       if i == self.Line {
         style = style.Bold(true)
       }
-      self._RenderLine(0, i + 1, line.ToString(), style)
+      self._RenderLine(0, i - offset + 1, line.ToString(), style)
     }
   } else if self.Content == NetworkResultHTML {
-    for i, line := range self.HTML {
-      self._RenderLine(0, i + 1, line, st)
+    for i := offset; i - offset < h - 2 && i < length; i += 1 {
+      line := self.HTML[i]
+      style := st
+      if i == self.Line {
+        style = style.Bold(true)
+      }
+      self._RenderLine(0, i - offset + 1, line, style)
     }
   }
 
@@ -352,9 +363,19 @@ func (self *UI) _ParseLines(lines []string) []*Record {
   return result
 }
 
+func (self *UI) _GetLength() int {
+  length := 0
+  if self.Content == NetworkResultOK {
+    length = len(self.Lines)
+  } else if self.Content == NetworkResultHTML {
+    length = len(self.HTML)
+  }
+  return length
+}
+
 func (self *UI) _SelectLink(diff int) {
-  for i := self.Line + diff; 0 <= i && i < len(self.Lines); i += diff {
-    if self.Lines[i].IsLink() {
+  for i := self.Line + diff; 0 <= i && i < self._GetLength(); i += diff {
+    if self.Content == NetworkResultHTML || self.Lines[i].IsLink() {
       self.Line = i
       break
     }
