@@ -17,6 +17,7 @@ import (
 
 const (
   NetworkResultOK = iota
+  NetworkResultHTML
   NetworkResultError
 )
 
@@ -26,6 +27,7 @@ type NetworkResult struct {
   Result int
   Address string
   List []string
+  HTML string
   Error string
 }
 
@@ -112,8 +114,9 @@ func (self *Network) _MakeRequest(request string) {
     port = url.Port()
   }
 
-  host := fmt.Sprintf("%s:%s", url.Host, port)
+  host := fmt.Sprintf("%s:%s", url.Hostname(), port)
   conn, err := net.Dial("tcp", host)
+  defer conn.Close()
   if err != nil {
     self._SendError(fmt.Sprintf("cannot connect to `%s`: %s", host, err))
     return
@@ -122,10 +125,52 @@ func (self *Network) _MakeRequest(request string) {
     return
   }
 
-  fmt.Fprintf(conn, CR_LF)
+  path := ""
+  if val, ok := url.Query()["q"]; ok {
+    path = val[0]
+  }
+  fmt.Fprintf(conn, fmt.Sprintf("%s%s", path, CR_LF))
 
-  lines := []string{}
   reader := bufio.NewReader(conn)
+
+  linkType := TypeSubMenu
+  if val, ok := url.Query()["t"]; ok {
+    linkType = val[0][0]
+  }
+
+  if linkType == TypeHTML {
+    self._ParseHTML(request, reader)
+  } else {
+    self._ParseGopher(request, reader)
+  }
+}
+
+func (self *Network) _ParseHTML(request string, reader *bufio.Reader) {
+  html := ""
+  buffer := make([]byte, 1024)
+  for {
+    if self._ShouldStop() {
+      return
+    }
+    n, err := reader.Read(buffer)
+
+    if err != nil && err != io.EOF {
+      self._SendError(fmt.Sprintf("while reading HTML: %s", err))
+      return
+    }
+
+    if n == 0 && err == io.EOF {
+      break
+    }
+
+    html += string(buffer[:n])
+  }
+
+  self._SendHTML(request, html)
+}
+
+func (self *Network) _ParseGopher(request string, reader *bufio.Reader) {
+  lines := []string{}
 
   for {
     if self._ShouldStop() {
@@ -172,8 +217,6 @@ func (self *Network) _MakeRequest(request string) {
     lines = append(lines, strings.Replace(line, CR_LF, "", -1))
   }
 
-  conn.Close()
-
   self._SendResult(request, lines)
 }
 
@@ -192,6 +235,13 @@ func (self *Network) _ShouldStop() (stop bool) {
   }
 
   return
+}
+
+func (self *Network) _SendHTML(address string, html string) {
+  if self._ShouldStop() {
+    return
+  }
+  self._SendMessage(&NetworkResult{Result: NetworkResultHTML, Address: address, HTML: html})
 }
 
 func (self *Network) _SendResult(address string, list []string) {

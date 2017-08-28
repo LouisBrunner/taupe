@@ -27,8 +27,10 @@ type UI struct {
 
   Loading bool
 
-  Line uint
-  Lines []string
+  Line int
+  Content int
+  Lines []*Record
+  HTML []string
 
   Status UIStatus
 
@@ -96,6 +98,7 @@ func (self *UI) _Loop() {
         self._HandleResult(result)
       }
 
+    // TODO: navigation
 		case *tcell.EventKey:
 			switch event.Key() {
       case tcell.KeyRune:
@@ -115,12 +118,12 @@ func (self *UI) _Loop() {
         }
 			case tcell.KeyUp:
         if !self.Loading {
-		      self.Line = uint(imax(int(self.Line) - 1, 0))
+          self._SelectLink(-1)
           self._Render()
         }
 			case tcell.KeyDown:
         if !self.Loading {
-		      self.Line = uint(imin(int(self.Line) + 1, len(self.Lines) - 1))
+          self._SelectLink(1)
           self._Render()
         }
 			}
@@ -144,8 +147,14 @@ func (self *UI) _Render() {
   self._RenderLine(0, 0, ljust(header, w), st.Reverse(true))
 
   // TODO: scroll
-  for i, line := range self.Lines {
-    self._RenderLine(0, i + 1, line, st.Underline(uint(i) == self.Line))
+  if self.Content == NetworkResultOK {
+    for i, line := range self.Lines {
+      self._RenderLine(0, i + 1, line.ToString(), st.Underline(i == self.Line))
+    }
+  } else if self.Content == NetworkResultHTML {
+    for i, line := range self.HTML {
+      self._RenderLine(0, i + 1, line, st)
+    }
   }
 
   var status string
@@ -173,14 +182,17 @@ func (self *UI) _RenderLine(x, y int, line string, style tcell.Style) {
 }
 
 func (self *UI) _RequestLine() {
-  // TODO: check if link, then follow, else error
-  // line := self.Lines[self.Lines]
-  // if line.IsLink() {
-  //   self.Loading = true
-  //   self._Network.Request(self.Address + line.Path)
-  // } else {
-  self._SetStatus("Error: cannot follow a non-link item")
-  // }
+  if self.Line < 0 {
+    self._SetStatus("Error: nothing selectable")
+    return
+  }
+  line := self.Lines[self.Line]
+  if line.IsLink() {
+    self.Loading = true
+    self.Network.Request(line.Address)
+  } else {
+    self._SetStatus("Error: cannot follow a non-gopher items")
+  }
 }
 
 func (self *UI) _Refresh() {
@@ -200,19 +212,74 @@ func (self *UI) _HandleResult(result *NetworkResult) {
   self.Loading = false
   switch result.Result {
   case NetworkResultOK:
+    self.Content = result.Result
     self.Address = result.Address
-    self.Line = 0
     self.Lines = self._ParseLines(result.List)
+    self.Line = -1
+    self._SelectLink(1)
+    self._Render()
+  case NetworkResultHTML:
+    self.Content = result.Result
+    self.Address = result.Address
+    self.HTML = self._ParseHTML(result.HTML)
+    self.Line = -1
     self._Render()
   case NetworkResultError:
     self._SetStatus(fmt.Sprintf("Network error: %s", result.Error))
   }
 }
 
-func (self *UI) _ParseLines(lines []string) []string {
-  // TODO: better parsing
-  return lines
+func (self *UI) _ParseHTML(html string) []string {
+  lines := strings.Split(html, "\n")
+  result := []string{}
+
+  w, _ := self.Screen.Size()
+  pivot := w - 2
+
+  for _, line := range lines {
+    if len(line) > w {
+      result = append(result, line[:w])
+      rest := line[w:]
+      for {
+        irest := rest
+        if len(rest) > w {
+          irest = rest[:pivot]
+        }
+        result = append(result, fmt.Sprintf("| %s", irest))
+        if len(rest) > w {
+          rest = rest[pivot:]
+        } else {
+          break
+        }
+      }
+    } else {
+      result = append(result, line)
+    }
+  }
+  return result
 }
+
+func (self *UI) _ParseLines(lines []string) []*Record {
+  result := []*Record{}
+  for _, line := range lines {
+    record := Record{}
+    if !record.Parse(line) {
+      self._SetStatus(fmt.Sprintf("Error: while parsing `%s`", line))
+      return []*Record{}
+    }
+    result = append(result, &record)
+  }
+  return result
+}
+
+func (self *UI) _SelectLink(diff int) {
+  for i := self.Line + diff; 0 <= i && i < len(self.Lines); i += diff {
+    if self.Lines[i].IsLink() {
+      self.Line = i
+      break
+    }
+  }
+ }
 
 func (self *UI) _SetStatus(message string) {
   if self.Screen == nil {
