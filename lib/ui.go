@@ -4,7 +4,9 @@ import (
   "time"
   "os"
   "fmt"
+  "net/url"
   "strings"
+  "strconv"
 
   "github.com/gdamore/tcell"
 )
@@ -165,7 +167,14 @@ func (self *UI) _Render() {
   // TODO: scroll
   if self.Content == NetworkResultOK {
     for i, line := range self.Lines {
-      self._RenderLine(0, i + 1, line.ToString(), st.Underline(i == self.Line))
+      style := st
+      if line.IsLink() {
+        style = style.Underline(true)
+      }
+      if i == self.Line {
+        style = style.Bold(true)
+      }
+      self._RenderLine(0, i + 1, line.ToString(), style)
     }
   } else if self.Content == NetworkResultHTML {
     for i, line := range self.HTML {
@@ -249,13 +258,30 @@ func (self *UI) OnNetworkResult(result *NetworkResult) {
 
 func (self *UI) _HandleCommon(result *NetworkResult) {
   self.Content = result.Result
+  history := self.Address
+  oldUrl, err := url.Parse(self.Address)
+  if err == nil {
+    q := oldUrl.Query()
+    q.Set("l", strconv.Itoa(self.Line))
+    oldUrl.RawQuery = q.Encode()
+    history = oldUrl.String()
+  }
   if self.WasPrevious {
-    self.HistoryAfter = append([]string{self.Address}, self.HistoryAfter...)
+    self.HistoryAfter = append([]string{history}, self.HistoryAfter...)
   } else {
-    self.HistoryBefore = append([]string{self.Address}, self.HistoryBefore...)
+    self.HistoryBefore = append([]string{history}, self.HistoryBefore...)
   }
   self.Address = result.Address
+  newUrl, err := url.Parse(self.Address)
   self.Line = -1
+  if err == nil {
+    if val, ok := newUrl.Query()["l"]; ok {
+      line, err := strconv.Atoi(val[0])
+      if err == nil {
+        self.Line = line - 1
+      }
+    }
+  }
 }
 
 func (self *UI) _HandleResult(result *NetworkResult) {
