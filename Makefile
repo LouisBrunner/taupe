@@ -12,7 +12,7 @@ cover: gover
 	go tool cover -html=gover.coverprofile
 
 coveralls: gover
-  goveralls -coverprofile=gover.coverprofile -service=travis-ci
+	goveralls -coverprofile=gover.coverprofile -service=travis-ci
 
 lint:
 	go vet ./...
@@ -24,4 +24,4 @@ deps:
 	go get github.com/mattn/goveralls
 	go get github.com/golang/lint/golint
 
-.PHONY: deps all ci test cover coveralls lint
+.PHONY: all ci test gover cover coveralls lint deps
