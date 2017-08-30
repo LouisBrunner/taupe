@@ -108,52 +108,49 @@ func (ui *UI) _Loop() {
       }
 
 		case *tcell.EventKey:
-			switch event.Key() {
-      case tcell.KeyRune:
-        switch event.Rune() {
-        case 'q', 'Q':
-          return
-        case 'r', 'R':
-          if !ui.Loading {
-  		      ui._Refresh()
-          }
-        case 'b', 'B':
-          if !ui.Loading {
-            ui._GoBack()
-          }
-        case 'f', 'F':
-          if !ui.Loading {
-            ui._GoForward()
-          }
-        case 'i', 'I':
-          if !ui.Loading {
-            ui._Input()
-          }
-        }
-			case tcell.KeyEscape, tcell.KeyCtrlC:
-			  return
-			case tcell.KeyEnter:
-        if !ui.Loading {
-		      ui._RequestLine()
-        }
-			case tcell.KeyUp:
-        if !ui.Loading {
-          ui._SelectLink(-1)
-          ui._Render()
-        }
-			case tcell.KeyDown:
-        if !ui.Loading {
-          ui._SelectLink(1)
-          ui._Render()
-        }
-      case tcell.KeyBackspace:
-        if !ui.Loading {
-          ui._GoBack()
-        }
-			}
-
+      if !ui._HandleKeys(event) {
+        return
+      }
 		}
   }
+}
+
+func (ui *UI) _HandleKeys(event *tcell.EventKey) bool {
+  switch event.Key() {
+  case tcell.KeyRune:
+    switch event.Rune() {
+    case 'q', 'Q':
+      return false
+    }
+  case tcell.KeyEscape, tcell.KeyCtrlC:
+    return false
+  }
+  if !ui.Loading {
+    switch event.Key() {
+    case tcell.KeyRune:
+      switch event.Rune() {
+      case 'r', 'R':
+        ui._Refresh()
+      case 'b', 'B':
+        ui._GoBack()
+      case 'f', 'F':
+        ui._GoForward()
+      case 'i', 'I':
+        ui._Input()
+      }
+    case tcell.KeyEnter:
+      ui._RequestLine()
+    case tcell.KeyUp:
+      ui._SelectLink(-1)
+      ui._Render()
+    case tcell.KeyDown:
+      ui._SelectLink(1)
+      ui._Render()
+    case tcell.KeyBackspace:
+      ui._GoBack()
+    }
+  }
+  return true
 }
 
 func ljust(s string, total int) string {
