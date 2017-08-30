@@ -10,4 +10,5 @@ before_install:
   - make deps
 
 script:
+  - go get -d -t ./...
   - make ci
