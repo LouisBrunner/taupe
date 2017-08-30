@@ -1,7 +1,4 @@
 package lib
-// import socket
-// from urllib.parse import urlparse
-// from threading import Thread, Event, Condition
 
 import (
   "sync"
@@ -15,14 +12,18 @@ import (
   "strings"
 )
 
+// Type of possible network results
 const (
   NetworkResultOK = iota
   NetworkResultHTML
   NetworkResultError
 )
 
-const CR_LF, EOM string = "\r\n", "."
+const crlf, eom string = "\r\n", "."
 
+const stopEvent, cancelEvent string = "STOP_EVENT", "CANCEL_EVENT"
+
+// NetworkResult represents an answer from a request sent to the Network class
 type NetworkResult struct {
   Result int
   Address string
@@ -31,13 +32,14 @@ type NetworkResult struct {
   Error string
 }
 
-type Listener interface {
+type listener interface {
   OnNetworkResult(result *NetworkResult)
 }
 
+// Network starts its own thread to handle network requests asynchronously
 type Network struct {
   Mutex sync.Mutex
-  Listeners []Listener
+  Listeners []listener
 
   Signals chan string
   Data chan string
@@ -46,6 +48,7 @@ type Network struct {
   StopFlag bool
 }
 
+// MakeNetwork builds a valid Network structure with channels, etc
 func MakeNetwork() *Network {
   return &Network{
     Signals: make(chan string),
@@ -54,58 +57,60 @@ func MakeNetwork() *Network {
   }
 }
 
-const StopEvent, CancelEvent string = "STOP_EVENT", "CANCEL_EVENT"
-
-func (self *Network) Register(listener Listener) {
-  self.Mutex.Lock()
-  defer self.Mutex.Unlock()
-  self.Listeners = append(self.Listeners, listener)
+// Register adds the provided `listener` in its internal listeners list
+func (network *Network) Register(listener listener) {
+  network.Mutex.Lock()
+  defer network.Mutex.Unlock()
+  network.Listeners = append(network.Listeners, listener)
 }
 
-func (self *Network) Start() {
-  go self._Loop()
+// Start spawns the Network internal loop in a thread
+func (network *Network) Start() {
+  go network._Loop()
 }
 
-func (self *Network) Stop() {
-  self.Signals <- StopEvent
+// Stop sends the stop event to the internal network thread
+func (network *Network) Stop() {
+  network.Signals <- stopEvent
 }
 
-func (self *Network) Request(address string) {
-  self.Signals <- CancelEvent
-  self.Data <- address
+// Request sends a cancel event for the current request and starts a new request to the provided `address`
+func (network *Network) Request(address string) {
+  network.Signals <- cancelEvent
+  network.Data <- address
 }
 
-func (self *Network) _Loop() {
+func (network *Network) _Loop() {
   for {
     select {
-    case signal := <-self.Signals:
-      if signal == StopEvent {
-        self.StopFlag = true
-      } else if signal == CancelEvent {
+    case signal := <-network.Signals:
+      if signal == stopEvent {
+        network.StopFlag = true
+      } else if signal == cancelEvent {
         continue
       }
-    case request := <-self.Data:
-      self._MakeRequest(request)
+    case request := <-network.Data:
+      network._MakeRequest(request)
     }
-    if self.StopFlag {
+    if network.StopFlag {
       break
     }
   }
 }
 
-func (self *Network) _MakeRequest(request string) {
+func (network *Network) _MakeRequest(request string) {
   url, err := url.Parse(request)
   if err != nil {
-    self._SendError(fmt.Sprintf("invalid url `%s`: %s", request, err))
+    network._SendError(fmt.Sprintf("invalid url `%s`: %s", request, err))
     return
   }
   if url.Scheme != "gopher" && url.Scheme != "" {
-    self._SendError(fmt.Sprintf("invalid scheme `%s`", url.Scheme))
+    network._SendError(fmt.Sprintf("invalid scheme `%s`", url.Scheme))
     return
   }
 
   if url.Host == "" {
-    self._SendError(fmt.Sprintf("missing host for `%s`", request))
+    network._SendError(fmt.Sprintf("missing host for `%s`", request))
     return
   }
 
@@ -118,10 +123,10 @@ func (self *Network) _MakeRequest(request string) {
   conn, err := net.Dial("tcp", host)
   defer conn.Close()
   if err != nil {
-    self._SendError(fmt.Sprintf("cannot connect to `%s`: %s", host, err))
+    network._SendError(fmt.Sprintf("cannot connect to `%s`: %s", host, err))
     return
   }
-  if self._ShouldStop() {
+  if network._ShouldStop() {
     return
   }
 
@@ -129,7 +134,7 @@ func (self *Network) _MakeRequest(request string) {
   if val, ok := url.Query()["q"]; ok {
     path = val[0]
   }
-  fmt.Fprintf(conn, fmt.Sprintf("%s%s", path, CR_LF))
+  fmt.Fprintf(conn, fmt.Sprintf("%s%s", path, crlf))
 
   reader := bufio.NewReader(conn)
 
@@ -140,23 +145,23 @@ func (self *Network) _MakeRequest(request string) {
 
   // TODO: support images, binaries...
   if linkType == TypeHTML {
-    self._ParseHTML(request, reader)
+    network._ParseHTML(request, reader)
   } else {
-    self._ParseGopher(request, reader)
+    network._ParseGopher(request, reader)
   }
 }
 
-func (self *Network) _ParseHTML(request string, reader *bufio.Reader) {
+func (network *Network) _ParseHTML(request string, reader *bufio.Reader) {
   html := ""
   buffer := make([]byte, 1024)
   for {
-    if self._ShouldStop() {
+    if network._ShouldStop() {
       return
     }
     n, err := reader.Read(buffer)
 
     if err != nil && err != io.EOF {
-      self._SendError(fmt.Sprintf("while reading HTML: %s", err))
+      network._SendError(fmt.Sprintf("while reading HTML: %s", err))
       return
     }
 
@@ -167,69 +172,69 @@ func (self *Network) _ParseHTML(request string, reader *bufio.Reader) {
     html += string(buffer[:n])
   }
 
-  self._SendHTML(request, html)
+  network._SendHTML(request, html)
 }
 
-func (self *Network) _ParseGopher(request string, reader *bufio.Reader) {
+func (network *Network) _ParseGopher(request string, reader *bufio.Reader) {
   lines := []string{}
 
   for {
-    if self._ShouldStop() {
+    if network._ShouldStop() {
       return
     }
 
     char, err := reader.Peek(1)
     if err != nil && err != io.EOF {
-      self._SendError(fmt.Sprintf("while reading EOM: %s", err))
+      network._SendError(fmt.Sprintf("while reading EOM: %s", err))
       return
     }
-    if string(char) == EOM || err == io.EOF {
+    if string(char) == eom || err == io.EOF {
       break
     }
 
     line := ""
     for {
-      if self._ShouldStop() {
+      if network._ShouldStop() {
         return
       }
 
-      result, err := reader.ReadString(CR_LF[0])
+      result, err := reader.ReadString(crlf[0])
       if err != nil {
-        self._SendError(fmt.Sprintf("while reading line: %s", err))
+        network._SendError(fmt.Sprintf("while reading line: %s", err))
         return
       }
       line += result
 
       char, err := reader.Peek(1)
       if err != nil {
-        self._SendError(fmt.Sprintf("while peeking LF: %s", err))
+        network._SendError(fmt.Sprintf("while peeking LF: %s", err))
         return
       }
-      if char[0] == CR_LF[1] {
+      if char[0] == crlf[1] {
         char, err := reader.ReadByte()
         if err != nil {
-          self._SendError(fmt.Sprintf("while reading LF: %s", err))
+          network._SendError(fmt.Sprintf("while reading LF: %s", err))
           return
         }
         line += string(char)
         break
       }
     }
-    lines = append(lines, strings.Replace(line, CR_LF, "", -1))
+    lines = append(lines, strings.Replace(line, crlf, "", -1))
   }
 
-  self._SendResult(request, lines)
+  network._SendResult(request, lines)
 }
 
-func (self *Network) _ShouldStop() (stop bool) {
+func (network *Network) _ShouldStop() (stop bool) {
   stop = false
 
   select {
-  case signal := <-self.Signals:
-    if signal == StopEvent {
-      self.StopFlag = true
+  case signal := <-network.Signals:
+    if signal == stopEvent {
+      network.StopFlag = true
       stop = true
-    } else if signal == CancelEvent {
+    } else if signal == cancelEvent {
       stop = true
     }
   default:
@@ -238,31 +243,31 @@ func (self *Network) _ShouldStop() (stop bool) {
   return
 }
 
-func (self *Network) _SendHTML(address string, html string) {
-  if self._ShouldStop() {
+func (network *Network) _SendHTML(address string, html string) {
+  if network._ShouldStop() {
     return
   }
-  self._SendMessage(&NetworkResult{Result: NetworkResultHTML, Address: address, HTML: html})
+  network._SendMessage(&NetworkResult{Result: NetworkResultHTML, Address: address, HTML: html})
 }
 
-func (self *Network) _SendResult(address string, list []string) {
-  if self._ShouldStop() {
+func (network *Network) _SendResult(address string, list []string) {
+  if network._ShouldStop() {
     return
   }
-  self._SendMessage(&NetworkResult{Result: NetworkResultOK, Address: address, List: list})
+  network._SendMessage(&NetworkResult{Result: NetworkResultOK, Address: address, List: list})
 }
 
-func (self *Network) _SendError(message string) {
-  if self._ShouldStop() {
+func (network *Network) _SendError(message string) {
+  if network._ShouldStop() {
     return
   }
-  self._SendMessage(&NetworkResult{Result: NetworkResultError, Error: message})
+  network._SendMessage(&NetworkResult{Result: NetworkResultError, Error: message})
 }
 
-func (self *Network) _SendMessage(result *NetworkResult) {
-  self.Mutex.Lock()
-  defer self.Mutex.Unlock()
-  for _, listener := range self.Listeners {
+func (network *Network) _SendMessage(result *NetworkResult) {
+  network.Mutex.Lock()
+  defer network.Mutex.Unlock()
+  for _, listener := range network.Listeners {
     listener.OnNetworkResult(result)
   }
 }

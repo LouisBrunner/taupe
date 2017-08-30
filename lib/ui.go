@@ -11,18 +11,19 @@ import (
   "github.com/gdamore/tcell"
 )
 
-const StatusTimeout time.Duration = 5 * time.Second
+const statusTimeout time.Duration = 5 * time.Second
 
-type EventHideStatus struct {
+type eventHideStatus struct {
   tcell.EventTime
 }
 
-type UIStatus struct {
+type uiStatus struct {
   Enabled bool
   Message string
   Cancel chan struct{}
 }
 
+// UI represents the ncurses user interface that someone use to interact with the Gophernet
 type UI struct {
   Network *Network
   Address string
@@ -34,7 +35,7 @@ type UI struct {
   Lines []*Record
   HTML []string
 
-  Status UIStatus
+  Status uiStatus
 
   Screen tcell.Screen
 
@@ -43,17 +44,19 @@ type UI struct {
   HistoryAfter []string
 }
 
+// MakeUI construct a UI correctly initialized
 func MakeUI(network *Network) *UI {
   return &UI{Network: network}
 }
 
-func (self *UI) Start(address string) {
-  self.Network.Register(self)
-  self.Address = address
-  self._Loop()
+// Start registers the UI with the Network (to get responses) and starts the internal loop
+func (ui *UI) Start(address string) {
+  ui.Network.Register(ui)
+  ui.Address = address
+  ui._Loop()
 }
 
-func (self *UI) _FatalError(err error) {
+func (ui *UI) _FatalError(err error) {
   fmt.Fprintf(os.Stderr, "Fatal Error: %v\n", err)
   os.Exit(1)
 }
@@ -72,36 +75,36 @@ func imax(a, b int) int {
   return b
 }
 
-func (self *UI) _Loop() {
+func (ui *UI) _Loop() {
 	tcell.SetEncodingFallback(tcell.EncodingFallbackASCII)
 	screen, err := tcell.NewScreen()
   if err != nil {
-    self._FatalError(err)
+    ui._FatalError(err)
 	}
 	if err = screen.Init(); err != nil {
-    self._FatalError(err)
+    ui._FatalError(err)
 	}
-  self.Screen = screen
+  ui.Screen = screen
   defer screen.Fini()
 
   screen.HideCursor()
-  self._Render()
-  self._Refresh()
+  ui._Render()
+  ui._Refresh()
 
   for {
     event := screen.PollEvent()
     switch event := event.(type) {
     case *tcell.EventResize:
-      self._Render()
+      ui._Render()
 
-    case *EventHideStatus:
-      self.Status.Enabled = false
-      self._Render()
+    case *eventHideStatus:
+      ui.Status.Enabled = false
+      ui._Render()
 
     case *tcell.EventInterrupt:
       switch result := event.Data().(type) {
       case *NetworkResult:
-        self._HandleResult(result)
+        ui._HandleResult(result)
       }
 
 		case *tcell.EventKey:
@@ -111,41 +114,41 @@ func (self *UI) _Loop() {
         case 'q', 'Q':
           return
         case 'r', 'R':
-          if !self.Loading {
-  		      self._Refresh()
+          if !ui.Loading {
+  		      ui._Refresh()
           }
         case 'b', 'B':
-          if !self.Loading {
-            self._GoBack()
+          if !ui.Loading {
+            ui._GoBack()
           }
         case 'f', 'F':
-          if !self.Loading {
-            self._GoForward()
+          if !ui.Loading {
+            ui._GoForward()
           }
         case 'i', 'I':
-          if !self.Loading {
-            self._Input()
+          if !ui.Loading {
+            ui._Input()
           }
         }
 			case tcell.KeyEscape, tcell.KeyCtrlC:
 			  return
 			case tcell.KeyEnter:
-        if !self.Loading {
-		      self._RequestLine()
+        if !ui.Loading {
+		      ui._RequestLine()
         }
 			case tcell.KeyUp:
-        if !self.Loading {
-          self._SelectLink(-1)
-          self._Render()
+        if !ui.Loading {
+          ui._SelectLink(-1)
+          ui._Render()
         }
 			case tcell.KeyDown:
-        if !self.Loading {
-          self._SelectLink(1)
-          self._Render()
+        if !ui.Loading {
+          ui._SelectLink(1)
+          ui._Render()
         }
       case tcell.KeyBackspace:
-        if !self.Loading {
-          self._GoBack()
+        if !ui.Loading {
+          ui._GoBack()
         }
 			}
 
@@ -157,49 +160,49 @@ func ljust(s string, total int) string {
   return s + strings.Repeat(" ", total - len(s))
 }
 
-func (self *UI) _Render() {
-  self.Screen.Clear()
+func (ui *UI) _Render() {
+  ui.Screen.Clear()
 
-  w, h := self.Screen.Size()
+  w, h := ui.Screen.Size()
   middle := h / 2
 
   st := tcell.StyleDefault
 
-  header := fmt.Sprintf("Taupe: %s", self.Address)
-  self._RenderLine(0, 0, ljust(header, w), st.Reverse(true))
+  header := fmt.Sprintf("Taupe: %s", ui.Address)
+  ui._RenderLine(0, 0, ljust(header, w), st.Reverse(true))
 
-  length := self._GetLength()
+  length := ui._GetLength()
   offset := 0
-  if self.Line > middle {
-    offset = imin(self.Line - middle, length - h + 2)
+  if ui.Line > middle {
+    offset = imin(ui.Line - middle, length - h + 2)
   }
-  if self.Content == NetworkResultOK {
-    for i := offset; i - offset < h - 2 && i < length; i += 1 {
-      line := self.Lines[i]
+  if ui.Content == NetworkResultOK {
+    for i := offset; i - offset < h - 2 && i < length; i++ {
+      line := ui.Lines[i]
       style := st
       if line.IsLink() {
         style = style.Underline(true)
       }
-      if i == self.Line {
+      if i == ui.Line {
         style = style.Bold(true)
       }
-      self._RenderLine(0, i - offset + 1, line.ToString(), style)
+      ui._RenderLine(0, i - offset + 1, line.ToString(), style)
     }
-  } else if self.Content == NetworkResultHTML {
-    for i := offset; i - offset < h - 2 && i < length; i += 1 {
-      line := self.HTML[i]
+  } else if ui.Content == NetworkResultHTML {
+    for i := offset; i - offset < h - 2 && i < length; i++ {
+      line := ui.HTML[i]
       style := st
-      if i == self.Line {
+      if i == ui.Line {
         style = style.Bold(true)
       }
-      self._RenderLine(0, i - offset + 1, line, style)
+      ui._RenderLine(0, i - offset + 1, line, style)
     }
   }
 
   var status string
-  if self.Status.Enabled {
-    status = self.Status.Message
-  } else if self.Loading {
+  if ui.Status.Enabled {
+    status = ui.Status.Message
+  } else if ui.Loading {
     status = "Loading..."
   }
 
@@ -207,124 +210,125 @@ func (self *UI) _Render() {
   if len(status) > 0 {
     footer = footer + " | " + status
   }
-  self._RenderLine(0, h - 1, ljust(footer, w), st.Reverse(true))
+  ui._RenderLine(0, h - 1, ljust(footer, w), st.Reverse(true))
 
-  self.Screen.Sync()
+  ui.Screen.Sync()
 }
 
-func (self *UI) _RenderLine(x, y int, line string, style tcell.Style) {
-  w, h := self.Screen.Size()
+func (ui *UI) _RenderLine(x, y int, line string, style tcell.Style) {
+  w, h := ui.Screen.Size()
 
   for i := x; i < len(line) && i < w && y < h; i++ {
-    self.Screen.SetContent(i, y, rune(line[i]), nil, style)
+    ui.Screen.SetContent(i, y, rune(line[i]), nil, style)
   }
 }
 
-func (self *UI) _Input() {
+func (ui *UI) _Input() {
   // TODO: manual input
 }
 
-func (self *UI) _GoBack() {
-  if len(self.HistoryBefore) < 1 {
-    self._SetStatus("Error: no previous page")
+func (ui *UI) _GoBack() {
+  if len(ui.HistoryBefore) < 1 {
+    ui._SetStatus("Error: no previous page")
     return
   }
-  self.Loading = true
-  previous := self.HistoryBefore[0]
-  self.HistoryBefore = self.HistoryBefore[1:]
-  self.WasPrevious = true
-  self.Network.Request(previous)
+  ui.Loading = true
+  previous := ui.HistoryBefore[0]
+  ui.HistoryBefore = ui.HistoryBefore[1:]
+  ui.WasPrevious = true
+  ui.Network.Request(previous)
 }
 
-func (self *UI) _GoForward() {
-  if len(self.HistoryAfter) < 1 {
-    self._SetStatus("Error: no next page")
+func (ui *UI) _GoForward() {
+  if len(ui.HistoryAfter) < 1 {
+    ui._SetStatus("Error: no next page")
     return
   }
-  self.Loading = true
-  next := self.HistoryAfter[0]
-  self.HistoryAfter = self.HistoryAfter[1:]
-  self.Network.Request(next)
+  ui.Loading = true
+  next := ui.HistoryAfter[0]
+  ui.HistoryAfter = ui.HistoryAfter[1:]
+  ui.Network.Request(next)
 }
 
-func (self *UI) _RequestLine() {
-  if self.Line < 0 {
-    self._SetStatus("Error: nothing selectable")
+func (ui *UI) _RequestLine() {
+  if ui.Line < 0 {
+    ui._SetStatus("Error: nothing selectable")
     return
   }
-  line := self.Lines[self.Line]
+  line := ui.Lines[ui.Line]
   if line.IsLink() {
-    self.Loading = true
-    self.Network.Request(line.Address)
+    ui.Loading = true
+    ui.Network.Request(line.Address)
   } else {
-    self._SetStatus("Error: cannot follow a non-gopher items")
+    ui._SetStatus("Error: cannot follow a non-gopher items")
   }
 }
 
-func (self *UI) _Refresh() {
-  self.Loading = true
-  self._Render()
-  self.Network.Request(self.Address)
+func (ui *UI) _Refresh() {
+  ui.Loading = true
+  ui._Render()
+  ui.Network.Request(ui.Address)
 }
 
-func (self *UI) OnNetworkResult(result *NetworkResult) {
-  if self.Screen == nil {
+// OnNetworkResult is the function called with the network response after Network.Request was called (async)
+func (ui *UI) OnNetworkResult(result *NetworkResult) {
+  if ui.Screen == nil {
     return
   }
-  self.Screen.PostEvent(tcell.NewEventInterrupt(result))
+  ui.Screen.PostEvent(tcell.NewEventInterrupt(result))
 }
 
-func (self *UI) _HandleCommon(result *NetworkResult) {
-  self.Content = result.Result
-  history := self.Address
-  oldUrl, err := url.Parse(self.Address)
+func (ui *UI) _HandleCommon(result *NetworkResult) {
+  ui.Content = result.Result
+  history := ui.Address
+  oldURL, err := url.Parse(ui.Address)
   if err == nil {
-    q := oldUrl.Query()
-    q.Set("l", strconv.Itoa(self.Line))
-    oldUrl.RawQuery = q.Encode()
-    history = oldUrl.String()
+    q := oldURL.Query()
+    q.Set("l", strconv.Itoa(ui.Line))
+    oldURL.RawQuery = q.Encode()
+    history = oldURL.String()
   }
-  if self.WasPrevious {
-    self.HistoryAfter = append([]string{history}, self.HistoryAfter...)
+  if ui.WasPrevious {
+    ui.HistoryAfter = append([]string{history}, ui.HistoryAfter...)
   } else {
-    self.HistoryBefore = append([]string{history}, self.HistoryBefore...)
+    ui.HistoryBefore = append([]string{history}, ui.HistoryBefore...)
   }
-  self.Address = result.Address
-  newUrl, err := url.Parse(self.Address)
-  self.Line = -1
+  ui.Address = result.Address
+  newURL, err := url.Parse(ui.Address)
+  ui.Line = -1
   if err == nil {
-    if val, ok := newUrl.Query()["l"]; ok {
+    if val, ok := newURL.Query()["l"]; ok {
       line, err := strconv.Atoi(val[0])
       if err == nil {
-        self.Line = line - 1
+        ui.Line = line - 1
       }
     }
   }
 }
 
-func (self *UI) _HandleResult(result *NetworkResult) {
-  self.Loading = false
+func (ui *UI) _HandleResult(result *NetworkResult) {
+  ui.Loading = false
   switch result.Result {
   case NetworkResultOK:
-    self._HandleCommon(result)
-    self.Lines = self._ParseLines(result.List)
-    self._SelectLink(1)
-    self._Render()
+    ui._HandleCommon(result)
+    ui.Lines = ui._ParseLines(result.List)
+    ui._SelectLink(1)
+    ui._Render()
   case NetworkResultHTML:
-    self._HandleCommon(result)
-    self.HTML = self._ParseHTML(result.HTML)
-    self._Render()
+    ui._HandleCommon(result)
+    ui.HTML = ui._ParseHTML(result.HTML)
+    ui._Render()
   case NetworkResultError:
-    self._SetStatus(fmt.Sprintf("Network error: %s", result.Error))
+    ui._SetStatus(fmt.Sprintf("Network error: %s", result.Error))
   }
-  self.WasPrevious = false
+  ui.WasPrevious = false
 }
 
-func (self *UI) _ParseHTML(html string) []string {
+func (ui *UI) _ParseHTML(html string) []string {
   lines := strings.Split(html, "\n")
   result := []string{}
 
-  w, _ := self.Screen.Size()
+  w, _ := ui.Screen.Size()
   pivot := w - 2
 
   for _, line := range lines {
@@ -350,12 +354,12 @@ func (self *UI) _ParseHTML(html string) []string {
   return result
 }
 
-func (self *UI) _ParseLines(lines []string) []*Record {
+func (ui *UI) _ParseLines(lines []string) []*Record {
   result := []*Record{}
   for _, line := range lines {
     record := Record{}
     if !record.Parse(line) {
-      self._SetStatus(fmt.Sprintf("Error: while parsing `%s`", line))
+      ui._SetStatus(fmt.Sprintf("Error: while parsing `%s`", line))
       return []*Record{}
     }
     result = append(result, &record)
@@ -363,46 +367,46 @@ func (self *UI) _ParseLines(lines []string) []*Record {
   return result
 }
 
-func (self *UI) _GetLength() int {
+func (ui *UI) _GetLength() int {
   length := 0
-  if self.Content == NetworkResultOK {
-    length = len(self.Lines)
-  } else if self.Content == NetworkResultHTML {
-    length = len(self.HTML)
+  if ui.Content == NetworkResultOK {
+    length = len(ui.Lines)
+  } else if ui.Content == NetworkResultHTML {
+    length = len(ui.HTML)
   }
   return length
 }
 
-func (self *UI) _SelectLink(diff int) {
-  for i := self.Line + diff; 0 <= i && i < self._GetLength(); i += diff {
-    if self.Content == NetworkResultHTML || self.Lines[i].IsLink() {
-      self.Line = i
+func (ui *UI) _SelectLink(diff int) {
+  for i := ui.Line + diff; 0 <= i && i < ui._GetLength(); i += diff {
+    if ui.Content == NetworkResultHTML || ui.Lines[i].IsLink() {
+      ui.Line = i
       break
     }
   }
  }
 
-func (self *UI) _SetStatus(message string) {
-  if self.Screen == nil {
+func (ui *UI) _SetStatus(message string) {
+  if ui.Screen == nil {
     return
   }
 
-  if self.Status.Enabled {
-    close(self.Status.Cancel)
+  if ui.Status.Enabled {
+    close(ui.Status.Cancel)
   }
 
   quit := make(chan struct{})
 
-  self.Status.Enabled = true
-  self.Status.Message = message
-  self.Status.Cancel = quit
-  self._Render()
+  ui.Status.Enabled = true
+  ui.Status.Message = message
+  ui.Status.Cancel = quit
+  ui._Render()
 
   go func() {
     select {
     case <-quit:
-    case <-time.After(StatusTimeout):
-      self.Screen.PostEvent(&EventHideStatus{})
+    case <-time.After(statusTimeout):
+      ui.Screen.PostEvent(&eventHideStatus{})
     }
   }()
 }

@@ -13,11 +13,11 @@ func usage() {
   flag.PrintDefaults()
 }
 
-type Args struct {
+type args struct {
   address string
 }
 
-func parseArgs() *Args {
+func parseArgs() *args {
   requiredArgs := 1
 
   flag.Parse()
@@ -27,7 +27,7 @@ func parseArgs() *Args {
     os.Exit(1)
   }
 
-  return &Args{address: flag.Arg(0)}
+  return &args{address: flag.Arg(0)}
 }
 
 func main() {

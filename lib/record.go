@@ -5,6 +5,7 @@ import (
   "strings"
 )
 
+// Types of available Gopher entries
 const (
   TypeFile byte = '0'
   TypeSubMenu byte = '1'
@@ -26,8 +27,9 @@ const (
   TypeSound byte = 's'
 )
 
-const TAB string = "\t"
+const tab string = "\t"
 
+// Record represents one entry in a Gopher response
 type Record struct {
   Type byte
   Display string
@@ -36,37 +38,40 @@ type Record struct {
   String string
 }
 
-func (self *Record) Parse(source string) bool {
-  fields := strings.Split(source, TAB)
+// Parse initialized the Record by parsing the provided `source`
+func (record *Record) Parse(source string) bool {
+  fields := strings.Split(source, tab)
   if len(fields[0]) < 1 {
     return false
   }
-  self.Type = fields[0][0]
-  self.Display = fields[0][1:]
-  self.Label = self._GetLabel()
-  if self.Label != "" {
-    self.String = fmt.Sprintf("[%s] %s", self.Label, self.Display)
+  record.Type = fields[0][0]
+  record.Display = fields[0][1:]
+  record.Label = record.getLabel(record.Type)
+  if record.Label != "" {
+    record.String = fmt.Sprintf("[%s] %s", record.Label, record.Display)
   } else {
-    self.String = self.Display
+    record.String = record.Display
   }
   if len(fields) >= 4 {
-    self.Address = fmt.Sprintf("gopher://%s:%s/?q=%s&t=%c", fields[2], fields[3], fields[1], self.Type)
+    record.Address = fmt.Sprintf("gopher://%s:%s/?q=%s&t=%c", fields[2], fields[3], fields[1], record.Type)
   }
   return true
 }
 
-func (self *Record) IsLink() bool {
-  return self.Type == TypeSubMenu || self.Type == TypeHTML
+// IsLink returns if the entry can be requested to a Gopher server
+func (record *Record) IsLink() bool {
+  return record.Type == TypeSubMenu || record.Type == TypeHTML
 }
 
-func (self *Record) ToString() string {
-  // return fmt.Sprintf("%c %s", self.Type, self.Display)
-  // return fmt.Sprintf("%s %s", self.Display, self.Address)
-  return self.String
+// ToString returns a displayable representation of the Record
+func (record *Record) ToString() string {
+  // return fmt.Sprintf("%c %s", record.Type, record.Display)
+  // return fmt.Sprintf("%s %s", record.Display, record.Address)
+  return record.String
 }
 
-func (self *Record) _GetLabel() string {
-  switch self.Type {
+func (record *Record) getLabel(gtype byte) string {
+  switch gtype {
   case TypeSubMenu:
     return "menu"
   case TypeHTML:
