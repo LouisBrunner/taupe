@@ -1,5 +1,8 @@
 all: test cover lint
 
+build:
+	go build ./cmd/taupe
+
 ci: test coveralls lint
 
 test:
@@ -16,12 +19,10 @@ coveralls: gover
 
 lint:
 	go vet ./...
-	golint ./...
+	golint `go list -f '{{.Dir}}' ./...`
 	gofmt -d -s `go list -f '{{.Dir}}' ./...`
 
 deps:
-	go get github.com/modocache/gover
-	go get github.com/mattn/goveralls
-	go get github.com/golang/lint/golint
+	go get -u github.com/modocache/gover github.com/mattn/goveralls github.com/golang/lint/golint
 
 .PHONY: all ci test gover cover coveralls lint deps

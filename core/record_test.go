@@ -1,40 +1,37 @@
-package lib
+package core
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+)
 
 func initTest(t *testing.T, gtype string, param string) *Record {
-	t.Logf("Check that %s entries are parsed correctly...", gtype)
-	record := Record{}
-	result := record.Parse(param)
-	if !result {
-		t.Errorf("Expected %s entry to be parsed correctly with %q, but it failed.", gtype, param)
+	record, err := ParseRecord(param)
+	if err != nil {
+		assert.FailNow(t, "Expected %s entry to be parsed correctly with %q, but it failed with %v.", gtype, param, err)
 	}
-	return &record
+	return record
 }
 
 func testLink(t *testing.T, record *Record, gtype string, shouldBe bool) {
-	if record.IsLink() != shouldBe {
-		if shouldBe {
-			t.Errorf("Expected %s entry to be a link, but it wasn't.", gtype)
-		} else {
-			t.Errorf("Expected %s entry not to be a link, but it was.", gtype)
-		}
+	var message string
+	if shouldBe {
+		message = "Expected %s entry to be a link, but it wasn't."
+	} else {
+		message = "Expected %s entry not to be a link, but it was."
 	}
+	assert.Equal(t, shouldBe, record.IsLink(), message, gtype)
 }
 
 func testString(t *testing.T, record *Record, gtype string, display string) {
-	if record.ToString() != display {
-		t.Errorf("Expected %s entry to be displayed has %s, but it was %s", gtype, display, record.ToString())
-	}
+	assert.Equal(t, display, record.ToString(), "Expected %s entry to be displayed has %s, but it was %s", gtype, display, record.ToString())
 }
 
 func TestFailParsing(t *testing.T) {
 	param := ""
-	record := Record{}
-	result := record.Parse(param)
-	if result {
-		t.Errorf("Expected parsing to fail for %q, but it succeeded.", param)
-	}
+	_, err := ParseRecord(param)
+	assert.Error(t, err, "Expected parsing to fail for %q, but it succeeded.", param)
 }
 
 func TestCreateAddress(t *testing.T) {
@@ -43,9 +40,7 @@ func TestCreateAddress(t *testing.T) {
 	record := initTest(t, gtype, param)
 
 	address := "gopher://go.server.net:42/?q=/req&t=0"
-	if record.Address != address {
-		t.Errorf("Expected address for %q to be %q, but it was %q instead.", param, address, record.Address)
-	}
+	assert.Equal(t, address, record.Address, "Expected address for %q to be %q, but it was %q instead.", param, address, record.Address)
 }
 
 func TestFile(t *testing.T) {

@@ -1,52 +1,66 @@
-package lib
+package core
 
 import (
 	"fmt"
 	"strings"
 )
 
+// GopherEntry represents the kind of link an entry is
+type GopherEntry byte
+
 // Types of available Gopher entries
 const (
-	TypeFile       byte = '0'
-	TypeSubMenu    byte = '1'
-	TypeCCSO       byte = '2'
-	TypeError      byte = '3'
-	TypeBinHex     byte = '4'
-	TypeDOS        byte = '5'
-	TypeUUEncoded  byte = '6'
-	TypeSearch     byte = '7'
-	TypeTelnet     byte = '8'
-	TypeBinary     byte = '9'
-	TypeRedundant  byte = '+'
-	TypeTelnet3270 byte = 'T'
-	TypeGIF        byte = 'g'
-	TypeImage      byte = 'I'
+	TypeFile       GopherEntry = '0'
+	TypeSubMenu    GopherEntry = '1'
+	TypeCCSO       GopherEntry = '2'
+	TypeError      GopherEntry = '3'
+	TypeBinHex     GopherEntry = '4'
+	TypeDOS        GopherEntry = '5'
+	TypeUUEncoded  GopherEntry = '6'
+	TypeSearch     GopherEntry = '7'
+	TypeTelnet     GopherEntry = '8'
+	TypeBinary     GopherEntry = '9'
+	TypeRedundant  GopherEntry = '+'
+	TypeTelnet3270 GopherEntry = 'T'
+	TypeGIF        GopherEntry = 'g'
+	TypeImage      GopherEntry = 'I'
 
-	TypeHTML          byte = 'h'
-	TypeInformational byte = 'i'
-	TypeSound         byte = 's'
+	TypeHTML          GopherEntry = 'h'
+	TypeInformational GopherEntry = 'i'
+	TypeSound         GopherEntry = 's'
 )
-
-const tab string = "\t"
 
 // Record represents one entry in a Gopher response
 type Record struct {
-	Type    byte
+	Type    GopherEntry
 	Display string
 	Address string
 	Label   string
 	String  string
 }
 
-// Parse initialized the Record by parsing the provided `source`
-func (record *Record) Parse(source string) bool {
-	fields := strings.Split(source, tab)
+// ParseEntry parses a byte into an entry type
+func ParseEntry(entry byte) GopherEntry {
+	return GopherEntry(entry)
+}
+
+// ParseRecord initializes a Record by parsing the provided `source`, or fail
+func ParseRecord(source string) (*Record, error) {
+	record := Record{}
+	if !record.parse(source) {
+		return nil, fmt.Errorf("failed to parse line '%s'", source)
+	}
+	return &record, nil
+}
+
+func (record *Record) parse(source string) bool {
+	fields := strings.Split(source, "\t")
 	if len(fields[0]) < 1 {
 		return false
 	}
-	record.Type = fields[0][0]
+	record.Type = ParseEntry(fields[0][0])
 	record.Display = fields[0][1:]
-	record.Label = record.getLabel(record.Type)
+	record.Label = record.Type.getLabel()
 	if record.Label != "" {
 		record.String = fmt.Sprintf("[%s] %s", record.Label, record.Display)
 	} else {
@@ -70,7 +84,7 @@ func (record *Record) ToString() string {
 	return record.String
 }
 
-func (record *Record) getLabel(gtype byte) string {
+func (gtype GopherEntry) getLabel() string {
 	switch gtype {
 	case TypeSubMenu:
 		return "menu"

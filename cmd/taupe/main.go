@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/LouisBrunner/taupe/lib"
+	"github.com/LouisBrunner/taupe"
 )
 
 func usage() {
@@ -34,6 +34,6 @@ func main() {
 	flag.Usage = usage
 	args := parseArgs()
 
-	app := lib.MakeApplication()
+	app := taupe.NewApplication()
 	app.Run(args.address)
 }
