@@ -44,12 +44,9 @@ func TestLJust(t *testing.T) {
 	}{
 		{"abc", 5, "abc  "},
 		{"abc", 3, "abc"},
+		{"abc", 2, "ab"},
 	}
 	for _, test := range cases {
 		assert.Equal(t, test.output, ljust(test.input1, test.input2))
 	}
-
-	assert.Panics(t, func() {
-		ljust("abc", 2)
-	})
 }

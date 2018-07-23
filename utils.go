@@ -19,5 +19,9 @@ func imax(a, b int) int {
 }
 
 func ljust(s string, total int) string {
-	return s + strings.Repeat(" ", total-len(s))
+	length := len(s)
+	if total < length {
+		return s[:total]
+	}
+	return s + strings.Repeat(" ", total-length)
 }
