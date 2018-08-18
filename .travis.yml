@@ -6,8 +6,7 @@ go:
   - tip
 
 before_install:
-  - make deps
+  - make ci_prepare
 
 script:
-  - go get -d -t ./...
   - make ci

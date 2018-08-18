@@ -1,28 +1,54 @@
-all: test cover lint
+BINARY = taupe
+TARGET = ./cmd/$(BINARY)
+LINT_PACKAGES = $(shell go list -f '{{.Dir}}' ./...)
+COVERPROFILES = *.coverprofile
+COVERPROFILE = goverprofile
+CWD = $(shell pwd)
+
+PACKAGES = github.com/modocache/gover\
+	github.com/mattn/goveralls\
+	github.com/golang/lint/golint\
+	github.com/golang/dep/cmd/dep
+
+# General
+all: build
 
 build:
-	go build ./cmd/taupe
-
-ci: test coveralls lint
-
-test:
-	go list -f '{{if len .TestGoFiles}}"go test -coverprofile={{.Dir}}/.coverprofile {{.ImportPath}}"{{end}}' ./... | xargs -L 1 sh -c
-
-gover:
-	gover
-
-cover: gover
-	go tool cover -html=gover.coverprofile
-
-coveralls: gover
-	goveralls -coverprofile=gover.coverprofile -service=travis-ci
+	go build $(TARGET)
 
 lint:
 	go vet ./...
-	golint `go list -f '{{.Dir}}' ./...`
-	gofmt -d -s `go list -f '{{.Dir}}' ./...`
+	golint $(LINT_PACKAGES)
+	gofmt -d -s $(LINT_PACKAGES)
 
-deps:
-	go get -u github.com/modocache/gover github.com/mattn/goveralls github.com/golang/lint/golint
+setup:
+	go get -u $(PACKAGES)
 
-.PHONY: all ci test gover cover coveralls lint deps
+clean:
+	rm -f $(COVERPROFILE) $(COVERPROFILES) $(BINARY)
+
+.PHONY: all build lint setup clean
+
+# Testing
+test:
+	go list -f '{{if len .TestGoFiles}}"go test -coverprofile='$(CWD)'/{{.Name}}.coverprofile {{.ImportPath}}"{{end}}' ./... | xargs -L 1 sh -c
+
+$(COVERPROFILE): $(COVERPROFILES)
+	gover . $@
+
+cover: $(COVERPROFILE)
+	go tool cover -html=$< -o cover.html
+	gocov convert $< | gocov report
+
+.PHONY: test cover
+
+# CI
+ci_prepare: setup
+	dep ensure
+
+coveralls: $(COVERPROFILE)
+	goveralls -coverprofile=$< -service=travis-ci
+
+ci: test coveralls lint
+
+.PHONY: ci_prepare coveralls ci
