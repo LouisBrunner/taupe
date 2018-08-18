@@ -1,3 +1,5 @@
 *.coverprofile
+goverprofile
+cover.html
 vendor
 /taupe

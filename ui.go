@@ -46,7 +46,7 @@ func NewUI(network NetworkManager) *UI {
 	return &UI{network: network}
 }
 
-// Start registers the UI with the Network (to get responses) and starts the internal loop
+// Run registers the UI with the Network (to get responses) and starts the internal loop
 func (ui *UI) Run(address string) {
 	ui.address = address
 	ui.run()
