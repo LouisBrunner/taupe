@@ -33,6 +33,8 @@ clean:
 test:
 	go list -f '{{if len .TestGoFiles}}"go test -coverprofile='$(CWD)'/{{.Name}}.coverprofile {{.ImportPath}}"{{end}}' ./... | xargs -L 1 sh -c
 
+$(COVERPROFILES): test
+
 $(COVERPROFILE): $(COVERPROFILES)
 	gover . $@
 
